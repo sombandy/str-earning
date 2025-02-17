@@ -5,14 +5,14 @@ import calendar
 
 
 def stnadard_columns(df):
-    df["Room charges"] = (df["Gross earning"] - df["Cleaning fee"])
+    df["Room fee"] = (df["Gross earning"] - df["Cleaning fee"]  - df["Service fee"])
     df["Days in Month"] = df.apply(
         lambda row: pd.Period(
             year=row["Year"], month=row["Month_Num"], freq="M"
         ).days_in_month,
         axis=1,
     )
-    df["ADR"] = (df["Room charges"] / df["Nights"]).round(0)
+    df["ADR"] = (df["Room fee"] / df["Nights"]).round(0)
     df["Occupancy rate"] = (100 * df["Nights"] / df["Days in Month"]).round(0)
     df["Occupancy rate"] = df["Occupancy rate"].astype(str) + "%"
     df = df.sort_values(by=["Year", "Month_Num"], ascending=[False, False])
@@ -21,11 +21,12 @@ def stnadard_columns(df):
         "Year",
         "Month",
         "Nights",
+        "Room fee",
+        "Cleaning fee",
+        "Service fee",
         "Gross earning",
         "Tax collected",
         "Paid out",
-        "Cleaning fee",
-        "Room charges",
         "Bookings",
         "ADR",
         "Occupancy rate",
@@ -42,7 +43,7 @@ def airbnb(df):
 
     payout = df[df["Type"] == "Payout"]
     reservations = df[df["Type"] == "Reservation"]
-    resolutions = df[df["Type"] == "Resolution Payout"]
+    resolutions = df[df["Type"].str.startswith("Resolution")]
     pass_through = df[df["Type"] == "Pass Through Tot"]
 
     payout_agg = (
@@ -97,7 +98,7 @@ def airbnb(df):
     ).fillna(0)
 
     monthly_data["Gross earning"] = (
-        monthly_data["Gross earning"] + monthly_data["Resolution amount"]
+        monthly_data["Gross earning"] + monthly_data["Resolution amount"] + monthly_data["Service fee"]
     )
 
     monthly_data["Computed Paid out"] = (
@@ -180,7 +181,7 @@ def annual_aggregate(monthly_data):
     combined_df = pd.concat(monthly_data, ignore_index=True)
     monthly_df = combined_df.groupby(["Year", "Month"]).sum().reset_index()
     annual_df = monthly_df.groupby("Year").sum().reset_index()
-    annual_df["ADR"] = (annual_df["Room charges"] / annual_df["Nights"]).round(0)
+    annual_df["ADR"] = (annual_df["Room fee"] / annual_df["Nights"]).round(0)
     annual_df.drop(columns=["Month", "Occupancy rate"], inplace=True)
     return annual_df
 
