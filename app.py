@@ -3,9 +3,23 @@ import streamlit as st
 import pandas as pd
 import calendar
 
+final_columns = [
+    "Year",
+    "Month",
+    "Nights",
+    "Room fee",
+    "Cleaning fee",
+    "Service fee",
+    "Gross earning",
+    "Tax collected",
+    "Paid out",
+    "Bookings",
+    "ADR",
+    "Occupancy rate",
+]
 
 def stnadard_columns(df):
-    df["Room fee"] = (df["Gross earning"] - df["Cleaning fee"]  - df["Service fee"])
+    df["Room fee"] = df["Gross earning"] - df["Cleaning fee"] - df["Service fee"]
     df["Days in Month"] = df.apply(
         lambda row: pd.Period(
             year=row["Year"], month=row["Month_Num"], freq="M"
@@ -16,22 +30,6 @@ def stnadard_columns(df):
     df["Occupancy rate"] = (100 * df["Nights"] / df["Days in Month"]).round(0)
     df["Occupancy rate"] = df["Occupancy rate"].astype(str) + "%"
     df = df.sort_values(by=["Year", "Month_Num"], ascending=[False, False])
-
-    final_columns = [
-        "Year",
-        "Month",
-        "Nights",
-        "Room fee",
-        "Cleaning fee",
-        "Service fee",
-        "Gross earning",
-        "Tax collected",
-        "Paid out",
-        "Bookings",
-        "ADR",
-        "Occupancy rate",
-    ]
-    
     return df[final_columns]
 
 
@@ -98,11 +96,15 @@ def airbnb(df):
     ).fillna(0)
 
     monthly_data["Gross earning"] = (
-        monthly_data["Gross earning"] + monthly_data["Resolution amount"] + monthly_data["Service fee"]
+        monthly_data["Gross earning"]
+        + monthly_data["Resolution amount"]
+        + monthly_data["Service fee"]
     )
 
     monthly_data["Computed Paid out"] = (
-        monthly_data["Gross earning"] + monthly_data["Tax collected"]
+        monthly_data["Gross earning"]
+        + monthly_data["Tax collected"]
+        - monthly_data["Service fee"]
     )
 
     discrepancy = monthly_data[
@@ -177,6 +179,92 @@ def vrbo(df):
     return final_df
 
 
+def booking_com(df):
+    for col in [
+        "Price per night",
+        "Room fee",
+        "Cleaning fee",
+        "Tax collected",
+        "Service fee",
+        "Paid out",
+    ]:
+        if col in df.columns:
+            df[col] = df[col].str.replace("$", "").str.replace(",", "").astype(float)
+
+    for col in ["Commission %", "Tax %"]:
+        if col in df.columns:
+            df[col] = df[col].str.replace("%", "").astype(float) / 100
+
+    df["Arrival"] = pd.to_datetime(df["Arrival"])
+    df["Departure"] = pd.to_datetime(df["Departure"])
+
+    df["Month_Num"] = df["Arrival"].dt.month
+    df["Month"] = df["Month_Num"].apply(lambda x: calendar.month_abbr[x])
+    df["Year"] = df["Arrival"].dt.year
+
+    aggregation = (
+        df.groupby(["Year", "Month_Num", "Month"])
+        .agg(
+            {
+                "Room nights": "sum",
+                "Room fee": "sum",
+                "Cleaning fee": "sum",
+                "Tax collected": "sum",
+                "Service fee": "sum",
+                "Paid out": "sum",
+                "Reservation number": "count",
+            }
+        )
+        .rename(
+            columns={
+                "Room nights": "Nights",
+                "Reservation number": "Bookings",
+            }
+        )
+        .reset_index()
+    )
+
+    aggregation["Gross earning"] = (
+        aggregation["Room fee"] + aggregation["Cleaning fee"] + aggregation["Service fee"]
+    )
+    print(aggregation.columns)
+    print(aggregation)
+
+    final_df = stnadard_columns(aggregation)
+
+    return final_df
+
+
+def monthly_aggregate(monthly_data):
+    month_to_num = {calendar.month_abbr[i]: i for i in range(1, 13)}
+    combined_df = pd.concat(monthly_data, ignore_index=True)
+    
+    if 'Month_Num' not in combined_df.columns:
+        combined_df['Month_Num'] = combined_df['Month'].map(month_to_num)
+    
+    monthly_agg = combined_df.groupby(["Year", "Month_Num", "Month"]).sum().reset_index()
+    
+    if 'Month_Num' not in monthly_agg.columns:
+        monthly_agg['Month_Num'] = monthly_agg['Month'].map(month_to_num)
+    
+    monthly_agg["ADR"] = (monthly_agg["Room fee"] / monthly_agg["Nights"]).round(0)
+    
+    monthly_agg["Days in Month"] = monthly_agg.apply(
+        lambda row: pd.Period(
+            year=row["Year"], month=row["Month_Num"], freq="M"
+        ).days_in_month,
+        axis=1,
+    )
+    
+    monthly_agg["Occupancy rate"] = (100 * monthly_agg["Nights"] / monthly_agg["Days in Month"]).round(0)
+    monthly_agg["Occupancy rate"] = monthly_agg["Occupancy rate"].astype(str) + "%"
+    
+    monthly_agg = monthly_agg.sort_values(by=["Year", "Month_Num"], ascending=[False, False])
+    
+    return monthly_agg[final_columns]
+
+
+
 def annual_aggregate(monthly_data):
     combined_df = pd.concat(monthly_data, ignore_index=True)
     monthly_df = combined_df.groupby(["Year", "Month"]).sum().reset_index()
@@ -184,6 +272,7 @@ def annual_aggregate(monthly_data):
     annual_df["ADR"] = (annual_df["Room fee"] / annual_df["Nights"]).round(0)
     annual_df.drop(columns=["Month", "Occupancy rate"], inplace=True)
     return annual_df
+
 
 uploaded_df = {}
 uploaded_files = st.file_uploader("Choose a CSV file", accept_multiple_files=True)
@@ -197,15 +286,29 @@ if uploaded_files:
                 monthly_df = airbnb(df)
             elif "Traveler Last Name" in df.columns:
                 monthly_df = vrbo(df)
+            elif "Booker name" in df.columns:
+                monthly_df = booking_com(df)
+            else:
+                st.error(f"Unknown CSV format in file: {uploaded_file.name}")
+                continue
         else:
             st.error("Uploaded file is not a CSV: " + uploaded_file.name)
-        
+            continue
+
         uploaded_df[uploaded_file.name] = monthly_df
-    
-    annual_df = annual_aggregate([df for df in uploaded_df.values()])
+
+    monthly_data = [df for df in uploaded_df.values()]    
+    annual_df = annual_aggregate(monthly_data)    
     st.header("Annual Aggregate")
     st.dataframe(annual_df)
-
+    
+    if len(uploaded_df) > 1:
+        st.header("Monthly Aggregate")
+        monthly_agg_df = monthly_aggregate(monthly_data)
+        st.dataframe(monthly_agg_df)
+    
+    # Display individual files
+    st.header("Individual Files")
     for name, df in uploaded_df.items():
         st.subheader(name)
         st.dataframe(df)
