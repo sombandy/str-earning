@@ -9,17 +9,16 @@ final_columns = [
     "Nights",
     "Room fee",
     "Cleaning fee",
-    "Service fee",
     "Gross earning",
     "Tax collected",
-    "Paid out",
+    "Service fee",
     "Bookings",
     "ADR",
     "Occupancy rate",
 ]
 
 def stnadard_columns(df):
-    df["Room fee"] = df["Gross earning"] - df["Cleaning fee"] - df["Service fee"]
+    df["Room fee"] = df["Gross earning"] - df["Cleaning fee"]
     df["Days in Month"] = df.apply(
         lambda row: pd.Period(
             year=row["Year"], month=row["Month_Num"], freq="M"
@@ -225,7 +224,7 @@ def booking_com(df):
     )
 
     aggregation["Gross earning"] = (
-        aggregation["Room fee"] + aggregation["Cleaning fee"] + aggregation["Service fee"]
+        aggregation["Room fee"] + aggregation["Cleaning fee"]
     )
     print(aggregation.columns)
     print(aggregation)
