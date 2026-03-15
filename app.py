@@ -17,12 +17,13 @@ final_columns = [
     "Occupancy rate",
 ]
 
+
 def stnadard_columns(df):
     df["Room fee"] = df["Gross earning"] - df["Cleaning fee"]
     df["Days in Month"] = df.apply(
-        lambda row: pd.Period(
-            year=row["Year"], month=row["Month_Num"], freq="M"
-        ).days_in_month,
+        lambda row: (
+            pd.Period(year=row["Year"], month=row["Month_Num"], freq="M").days_in_month
+        ),
         axis=1,
     )
     df["ADR"] = (df["Room fee"] / df["Nights"]).round(0)
@@ -162,9 +163,9 @@ def vrbo(df):
         aggregation["Lodging Tax Owner Remits"] + aggregation["Tax Withheld"]
     )
     aggregation["Days in Month"] = aggregation.apply(
-        lambda row: pd.Period(
-            year=row["Year"], month=row["Month_Num"], freq="M"
-        ).days_in_month,
+        lambda row: (
+            pd.Period(year=row["Year"], month=row["Month_Num"], freq="M").days_in_month
+        ),
         axis=1,
     )
 
@@ -197,9 +198,9 @@ def booking_com(df):
     df["Arrival"] = pd.to_datetime(df["Arrival"])
     df["Departure"] = pd.to_datetime(df["Departure"])
 
-    df["Month_Num"] = df["Arrival"].dt.month
+    df["Month_Num"] = df["Departure"].dt.month
     df["Month"] = df["Month_Num"].apply(lambda x: calendar.month_abbr[x])
-    df["Year"] = df["Arrival"].dt.year
+    df["Year"] = df["Departure"].dt.year
 
     aggregation = (
         df.groupby(["Year", "Month_Num", "Month"])
@@ -223,9 +224,7 @@ def booking_com(df):
         .reset_index()
     )
 
-    aggregation["Gross earning"] = (
-        aggregation["Room fee"] + aggregation["Cleaning fee"]
-    )
+    aggregation["Gross earning"] = aggregation["Room fee"] + aggregation["Cleaning fee"]
     print(aggregation.columns)
     print(aggregation)
 
@@ -237,31 +236,36 @@ def booking_com(df):
 def monthly_aggregate(monthly_data):
     month_to_num = {calendar.month_abbr[i]: i for i in range(1, 13)}
     combined_df = pd.concat(monthly_data, ignore_index=True)
-    
-    if 'Month_Num' not in combined_df.columns:
-        combined_df['Month_Num'] = combined_df['Month'].map(month_to_num)
-    
-    monthly_agg = combined_df.groupby(["Year", "Month_Num", "Month"]).sum().reset_index()
-    
-    if 'Month_Num' not in monthly_agg.columns:
-        monthly_agg['Month_Num'] = monthly_agg['Month'].map(month_to_num)
-    
+
+    if "Month_Num" not in combined_df.columns:
+        combined_df["Month_Num"] = combined_df["Month"].map(month_to_num)
+
+    monthly_agg = (
+        combined_df.groupby(["Year", "Month_Num", "Month"]).sum().reset_index()
+    )
+
+    if "Month_Num" not in monthly_agg.columns:
+        monthly_agg["Month_Num"] = monthly_agg["Month"].map(month_to_num)
+
     monthly_agg["ADR"] = (monthly_agg["Room fee"] / monthly_agg["Nights"]).round(0)
-    
+
     monthly_agg["Days in Month"] = monthly_agg.apply(
-        lambda row: pd.Period(
-            year=row["Year"], month=row["Month_Num"], freq="M"
-        ).days_in_month,
+        lambda row: (
+            pd.Period(year=row["Year"], month=row["Month_Num"], freq="M").days_in_month
+        ),
         axis=1,
     )
-    
-    monthly_agg["Occupancy rate"] = (100 * monthly_agg["Nights"] / monthly_agg["Days in Month"]).round(0)
-    monthly_agg["Occupancy rate"] = monthly_agg["Occupancy rate"].astype(str) + "%"
-    
-    monthly_agg = monthly_agg.sort_values(by=["Year", "Month_Num"], ascending=[False, False])
-    
-    return monthly_agg[final_columns]
 
+    monthly_agg["Occupancy rate"] = (
+        100 * monthly_agg["Nights"] / monthly_agg["Days in Month"]
+    ).round(0)
+    monthly_agg["Occupancy rate"] = monthly_agg["Occupancy rate"].astype(str) + "%"
+
+    monthly_agg = monthly_agg.sort_values(
+        by=["Year", "Month_Num"], ascending=[False, False]
+    )
+
+    return monthly_agg[final_columns]
 
 
 def annual_aggregate(monthly_data):
@@ -296,16 +300,16 @@ if uploaded_files:
 
         uploaded_df[uploaded_file.name] = monthly_df
 
-    monthly_data = [df for df in uploaded_df.values()]    
-    annual_df = annual_aggregate(monthly_data)    
+    monthly_data = [df for df in uploaded_df.values()]
+    annual_df = annual_aggregate(monthly_data)
     st.header("Annual Aggregate")
     st.dataframe(annual_df)
-    
+
     if len(uploaded_df) > 1:
         st.header("Monthly Aggregate")
         monthly_agg_df = monthly_aggregate(monthly_data)
         st.dataframe(monthly_agg_df)
-    
+
     # Display individual files
     st.header("Individual Files")
     for name, df in uploaded_df.items():
