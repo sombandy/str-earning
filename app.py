@@ -186,6 +186,7 @@ def booking_com(df):
         "Cleaning fee",
         "Tax collected",
         "Service fee",
+        "Refund",
         "Paid out",
     ]:
         if col in df.columns:
@@ -211,6 +212,7 @@ def booking_com(df):
                 "Cleaning fee": "sum",
                 "Tax collected": "sum",
                 "Service fee": "sum",
+                "Refund": "sum",
                 "Paid out": "sum",
                 "Reservation number": "count",
             }
@@ -224,6 +226,7 @@ def booking_com(df):
         .reset_index()
     )
 
+    aggregation["Service fee"] = aggregation["Service fee"] + aggregation["Refund"]
     aggregation["Gross earning"] = aggregation["Room fee"] + aggregation["Cleaning fee"]
     print(aggregation.columns)
     print(aggregation)
